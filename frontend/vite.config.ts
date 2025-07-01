@@ -5,6 +5,11 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
-    host: '0.0.0.0',   // ← isso permite acesso externo
+    host: '0.0.0.0',
+    hmr: {
+      clientPort: 443,
+    },
   }
 })
+
+
