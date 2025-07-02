@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { Save, ArrowLeft, User, Building2, MapPin, Loader2, AlertCircle, CheckCircle2, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
+import { toast } from 'react-hot-toast';
 
 // Schema de validação
 const schema = z.object({
@@ -240,17 +241,36 @@ export default function ClientForm() {
 
   const onSubmit = async (data: ClientFormData) => {
     try {
-      console.log('Dados do formulário:', data);
-      // Aqui você faria a chamada para a API
-      await new Promise(resolve => setTimeout(resolve, 2000)); // Simular delay
-      
-      // Mostrar sucesso
-      alert('Cliente salvo com sucesso!');
+      const payload = {
+        ...data,
+        document: data.document.replace(/\D/g, ''),
+      };
+      const isEdicao = 'id' in data && !!data.id;
+      const url = isEdicao
+        ? `http://localhost:3000/clients/${data.id}`
+        : 'http://localhost:3000/clients';
+      const method = isEdicao ? 'PUT' : 'POST';
+
+      const response = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        if (response.status === 409) {
+          toast.error('Documento já está cadastrado!');
+        } else {
+          toast.error('Erro ao salvar cliente. Tente novamente.');
+        }
+        return;
+      }
+
+      toast.success(isEdicao ? 'Cliente atualizado com sucesso!' : 'Cliente cadastrado com sucesso!');
       reset();
       navigate('/clientes');
     } catch (error) {
-      console.error('Erro ao salvar cliente:', error);
-      alert('Erro ao salvar cliente. Tente novamente.');
+      toast.error('Erro ao salvar cliente. Tente novamente.');
     }
   };
 
