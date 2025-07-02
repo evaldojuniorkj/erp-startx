@@ -12,13 +12,16 @@ export class ClientsService {
     private repo: Repository<Client>,
   ) { }
 
+
+
   async create(dto: CreateClientDto) {
     try {
       const client = this.repo.create(dto);
       return await this.repo.save(client);
     } catch (error: any) {
+      // 23505 é o código do PostgreSQL para violação de UNIQUE
       if (error.code === '23505') {
-        throw new ConflictException('Cliente já cadastrado');
+        throw new ConflictException('Documento já cadastrado');
       }
       throw error;
     }

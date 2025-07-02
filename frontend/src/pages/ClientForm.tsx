@@ -6,13 +6,14 @@ import { Save, ArrowLeft, User, Building2, MapPin, Loader2, AlertCircle, CheckCi
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
+import { validarCPF, validarCNPJ } from '../utils/validations';
 
 // Schema de validação
 const schema = z.object({
   type: z.enum(['FISICA', 'JURIDICA']),
   name: z.string().min(1, 'Nome é obrigatório'),
   nomeFantasia: z.string().optional(),
-  document: z.string().min(1, 'Documento é obrigatório'),
+  document: z.string().optional(), // NÃO obrigatório!
   email: z.string().email('Email inválido').optional().or(z.literal('')),
   phone: z.string().optional(),
   cep: z.string().optional(),
@@ -21,17 +22,44 @@ const schema = z.object({
   neighborhood: z.string().optional(),
   city: z.string().optional(),
   state: z.string().optional(),
+}).superRefine((val, ctx) => {
+  const documento = val.document?.replace(/\D/g, '');
+
+  if (val.type === 'FISICA' && documento) {
+    if (!validarCPF(documento)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'CPF inválido',
+        path: ['document']
+      });
+    }
+  }
+  if (val.type === 'JURIDICA') {
+    if (!documento) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'CNPJ é obrigatório',
+        path: ['document']
+      });
+    } else if (!validarCNPJ(documento)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'CNPJ inválido',
+        path: ['document']
+      });
+    }
+  }
 });
 
 type ClientFormData = z.infer<typeof schema>;
 
 // Componente Input personalizado com forwardRef
-const FormInput = React.forwardRef<HTMLInputElement, any>(({ 
-  label, 
-  error, 
-  icon: Icon, 
-  className = '', 
-  ...props 
+const FormInput = React.forwardRef<HTMLInputElement, any>(({
+  label,
+  error,
+  icon: Icon,
+  className = '',
+  ...props
 }, ref) => (
   <div className={`space-y-2 ${className}`}>
     <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
@@ -42,11 +70,10 @@ const FormInput = React.forwardRef<HTMLInputElement, any>(({
       <input
         ref={ref}
         {...props}
-        className={`w-full px-4 py-3 border rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-          error 
-            ? 'border-red-300 bg-red-50 focus:ring-red-500' 
-            : 'border-gray-300 hover:border-gray-400 focus:border-blue-500'
-        }`}
+        className={`w-full px-4 py-3 border rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${error
+          ? 'border-red-300 bg-red-50 focus:ring-red-500'
+          : 'border-gray-300 hover:border-gray-400 focus:border-blue-500'
+          }`}
       />
       {error && (
         <motion.div
@@ -75,13 +102,13 @@ const FormInput = React.forwardRef<HTMLInputElement, any>(({
 ));
 
 // Componente Select personalizado
-const FormSelect = ({ 
-  label, 
-  error, 
-  icon: Icon, 
-  className = '', 
+const FormSelect = ({
+  label,
+  error,
+  icon: Icon,
+  className = '',
   children,
-  ...props 
+  ...props
 }: any) => (
   <div className={`space-y-2 ${className}`}>
     <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
@@ -91,11 +118,10 @@ const FormSelect = ({
     <div className="relative">
       <select
         {...props}
-        className={`w-full px-4 py-3 border rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none bg-white ${
-          error 
-            ? 'border-red-300 bg-red-50 focus:ring-red-500' 
-            : 'border-gray-300 hover:border-gray-400 focus:border-blue-500'
-        }`}
+        className={`w-full px-4 py-3 border rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none bg-white ${error
+          ? 'border-red-300 bg-red-50 focus:ring-red-500'
+          : 'border-gray-300 hover:border-gray-400 focus:border-blue-500'
+          }`}
       >
         {children}
       </select>
@@ -179,7 +205,7 @@ export default function ClientForm() {
     const novoTipo = e.target.value as 'FISICA' | 'JURIDICA';
     setTipoPessoa(novoTipo);
     setValue('type', novoTipo);
-    
+
     // Limpar campo nome fantasia se mudou para pessoa física
     if (novoTipo === 'FISICA') {
       setValue('nomeFantasia', '');
@@ -189,7 +215,7 @@ export default function ClientForm() {
   // Formatação de documento
   const formatDocument = (value: string, type: 'FISICA' | 'JURIDICA') => {
     const numbers = value.replace(/\D/g, '');
-    
+
     if (type === 'FISICA') {
       // CPF: 000.000.000-00
       return numbers
@@ -218,13 +244,13 @@ export default function ClientForm() {
   // Buscar CEP
   const handleCepChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const cep = e.target.value.replace(/\D/g, '');
-    
+
     if (cep.length === 8) {
       setIsCepLoading(true);
       try {
         const response = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
         const data = await response.json();
-        
+
         if (!data.erro) {
           setValue('street', data.logradouro);
           setValue('neighborhood', data.bairro);
@@ -243,7 +269,7 @@ export default function ClientForm() {
     try {
       const payload = {
         ...data,
-        document: data.document.replace(/\D/g, ''),
+        document: data.document ? data.document.replace(/\D/g, '') : ''
       };
       const isEdicao = 'id' in data && !!data.id;
       const url = isEdicao
@@ -259,7 +285,7 @@ export default function ClientForm() {
 
       if (!response.ok) {
         if (response.status === 409) {
-          toast.error('Documento já está cadastrado!');
+          toast.error('Já existe um cliente com este CPF/CNPJ!');
         } else {
           toast.error('Erro ao salvar cliente. Tente novamente.');
         }
@@ -445,7 +471,7 @@ export default function ClientForm() {
               <X className="w-4 h-4" />
               Cancelar
             </motion.button>
-            
+
             <motion.button
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
