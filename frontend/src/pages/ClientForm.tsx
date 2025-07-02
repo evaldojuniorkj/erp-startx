@@ -2,18 +2,18 @@ import React, { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Save, ArrowLeft, User, Building2, MapPin, Loader2, AlertCircle, CheckCircle2, X } from 'lucide-react';
+import { Save, ArrowLeft, User, Building2, MapPin, Loader2, AlertCircle, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { toast } from 'react-hot-toast';
+import { Toaster, toast } from 'react-hot-toast';
 import { validarCPF, validarCNPJ } from '../utils/validations';
 
-// Schema de validação
+// SCHEMA com validação condicional
 const schema = z.object({
   type: z.enum(['FISICA', 'JURIDICA']),
   name: z.string().min(1, 'Nome é obrigatório'),
   nomeFantasia: z.string().optional(),
-  document: z.string().optional(), // NÃO obrigatório!
+  document: z.string().optional(),
   email: z.string().email('Email inválido').optional().or(z.literal('')),
   phone: z.string().optional(),
   cep: z.string().optional(),
@@ -53,7 +53,7 @@ const schema = z.object({
 
 type ClientFormData = z.infer<typeof schema>;
 
-// Componente Input personalizado com forwardRef
+// Componente Input personalizado
 const FormInput = React.forwardRef<HTMLInputElement, any>(({
   label,
   error,
@@ -186,47 +186,29 @@ export default function ClientForm() {
     formState: { errors, isSubmitting }
   } = useForm<ClientFormData>({
     resolver: zodResolver(schema),
-    mode: 'onBlur', // Mudando para onBlur para melhor performance
-    defaultValues: {
-      type: 'FISICA'
-    }
+    mode: 'onBlur',
+    defaultValues: { type: 'FISICA' }
   });
 
-  // Usar watch para detectar mudanças no tipo
   const watchedType = watch('type');
+  useEffect(() => { setTipoPessoa(watchedType || 'FISICA'); }, [watchedType]);
 
-  // Sincronizar estado local com o watch
-  useEffect(() => {
-    setTipoPessoa(watchedType || 'FISICA');
-  }, [watchedType]);
-
-  // Handler para mudança de tipo de pessoa
   const handleTipoChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const novoTipo = e.target.value as 'FISICA' | 'JURIDICA';
     setTipoPessoa(novoTipo);
     setValue('type', novoTipo);
-
-    // Limpar campo nome fantasia se mudou para pessoa física
-    if (novoTipo === 'FISICA') {
-      setValue('nomeFantasia', '');
-    }
+    if (novoTipo === 'FISICA') setValue('nomeFantasia', '');
   };
 
-  // Formatação de documento
   const formatDocument = (value: string, type: 'FISICA' | 'JURIDICA') => {
     const numbers = value.replace(/\D/g, '');
-
     if (type === 'FISICA') {
-      // CPF: 000.000.000-00
-      return numbers
-        .slice(0, 11)
+      return numbers.slice(0, 11)
         .replace(/(\d{3})(\d)/, '$1.$2')
         .replace(/(\d{3})(\d)/, '$1.$2')
         .replace(/(\d{3})(\d{1,2})$/, '$1-$2');
     } else {
-      // CNPJ: 00.000.000/0000-00
-      return numbers
-        .slice(0, 14)
+      return numbers.slice(0, 14)
         .replace(/(\d{2})(\d)/, '$1.$2')
         .replace(/(\d{3})(\d)/, '$1.$2')
         .replace(/(\d{3})(\d)/, '$1/$2')
@@ -234,23 +216,19 @@ export default function ClientForm() {
     }
   };
 
-  // Handler para mudança de documento
   const handleDocumentChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const formatted = formatDocument(e.target.value, tipoPessoa);
     setValue('document', formatted);
     e.target.value = formatted;
   };
 
-  // Buscar CEP
   const handleCepChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const cep = e.target.value.replace(/\D/g, '');
-
     if (cep.length === 8) {
       setIsCepLoading(true);
       try {
         const response = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
         const data = await response.json();
-
         if (!data.erro) {
           setValue('street', data.logradouro);
           setValue('neighborhood', data.bairro);
@@ -265,44 +243,49 @@ export default function ClientForm() {
     }
   };
 
- const onSubmit = async (data: ClientFormData) => {
-  try {
-    const payload = {
-      ...data,
-      document: data.document ? data.document.replace(/\D/g, '') : ''
-    };
-    const isEdicao = 'id' in data && !!data.id;
-    const url = isEdicao
-      ? `http://localhost:3000/clients/${data.id}`
-      : 'http://localhost:3000/clients';
-    const method = isEdicao ? 'PUT' : 'POST';
+  // --- O BLOCO CORRIGIDO DO onSubmit ---
+  const onSubmit = async (data: ClientFormData) => {
+    try {
+      const payload = {
+        ...data,
+        document: data.document ? data.document.replace(/\D/g, '') : ''
+      };
+      const isEdicao = 'id' in data && !!data.id;
+      const url = isEdicao
+        ? `http://localhost:3000/clients/${data.id}`
+        : 'http://localhost:3000/clients';
+      const method = isEdicao ? 'PUT' : 'POST';
 
-    const response = await fetch(url, {
-      method,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
+      const response = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
 
-    if (!response.ok) {
-      // Tenta ler a mensagem do backend
-      let msg = 'Erro ao salvar cliente. Tente novamente.';
-      try {
-        const errData = await response.json();
-        if (errData && errData.message) {
-          msg = errData.message;
+      if (!response.ok) {
+        let msg = 'Erro ao salvar cliente. Tente novamente.';
+        try {
+          // Tenta ler o JSON do erro
+          const errData = await response.clone().json();
+          if (errData && errData.message) {
+            msg = Array.isArray(errData.message)
+              ? errData.message.join('; ')
+              : errData.message;
+          }
+        } catch (e) {
+          // fallback se não conseguir ler o json
         }
-      } catch (e) {}
-      toast.error(msg);
-      return;
-    }
+        toast.error(msg);
+        return;
+      }
 
-    toast.success(isEdicao ? 'Cliente atualizado com sucesso!' : 'Cliente cadastrado com sucesso!');
-    reset();
-    navigate('/clientes');
-  } catch (error) {
-    toast.error('Erro ao salvar cliente. Tente novamente.');
-  }
-};
+      toast.success(isEdicao ? 'Cliente atualizado com sucesso!' : 'Cliente cadastrado com sucesso!');
+      reset();
+      navigate('/clientes');
+    } catch (error) {
+      toast.error('Erro ao salvar cliente. Tente novamente.');
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 py-8">
@@ -356,7 +339,7 @@ export default function ClientForm() {
                 {...register('name')}
               />
 
-              {/* Campo Nome Fantasia - Funcional */}
+              {/* Campo Nome Fantasia */}
               {tipoPessoa === 'JURIDICA' && (
                 <motion.div
                   initial={{ opacity: 0, y: -10 }}
@@ -496,4 +479,3 @@ export default function ClientForm() {
     </div>
   );
 }
-
