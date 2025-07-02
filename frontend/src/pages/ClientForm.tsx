@@ -265,40 +265,44 @@ export default function ClientForm() {
     }
   };
 
-  const onSubmit = async (data: ClientFormData) => {
-    try {
-      const payload = {
-        ...data,
-        document: data.document ? data.document.replace(/\D/g, '') : ''
-      };
-      const isEdicao = 'id' in data && !!data.id;
-      const url = isEdicao
-        ? `http://localhost:3000/clients/${data.id}`
-        : 'http://localhost:3000/clients';
-      const method = isEdicao ? 'PUT' : 'POST';
+ const onSubmit = async (data: ClientFormData) => {
+  try {
+    const payload = {
+      ...data,
+      document: data.document ? data.document.replace(/\D/g, '') : ''
+    };
+    const isEdicao = 'id' in data && !!data.id;
+    const url = isEdicao
+      ? `http://localhost:3000/clients/${data.id}`
+      : 'http://localhost:3000/clients';
+    const method = isEdicao ? 'PUT' : 'POST';
 
-      const response = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
+    const response = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
 
-      if (!response.ok) {
-        if (response.status === 409) {
-          toast.error('Já existe um cliente com este CPF/CNPJ!');
-        } else {
-          toast.error('Erro ao salvar cliente. Tente novamente.');
+    if (!response.ok) {
+      // Tenta ler a mensagem do backend
+      let msg = 'Erro ao salvar cliente. Tente novamente.';
+      try {
+        const errData = await response.json();
+        if (errData && errData.message) {
+          msg = errData.message;
         }
-        return;
-      }
-
-      toast.success(isEdicao ? 'Cliente atualizado com sucesso!' : 'Cliente cadastrado com sucesso!');
-      reset();
-      navigate('/clientes');
-    } catch (error) {
-      toast.error('Erro ao salvar cliente. Tente novamente.');
+      } catch (e) {}
+      toast.error(msg);
+      return;
     }
-  };
+
+    toast.success(isEdicao ? 'Cliente atualizado com sucesso!' : 'Cliente cadastrado com sucesso!');
+    reset();
+    navigate('/clientes');
+  } catch (error) {
+    toast.error('Erro ao salvar cliente. Tente novamente.');
+  }
+};
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 py-8">

@@ -31,12 +31,19 @@ export class ClientsService {
     return this.repo.find();
   }
 
-  async update(id: number, dto: CreateClientDto) {
-    const client = await this.repo.findOne({ where: { id } });
-    if (!client) throw new NotFoundException('Cliente não encontrado');
-    Object.assign(client, dto);
-    return this.repo.save(client);
+ async update(id: number, dto: CreateClientDto) {
+  const client = await this.repo.findOne({ where: { id } });
+  if (!client) throw new NotFoundException('Cliente não encontrado');
+  Object.assign(client, dto);
+  try {
+    return await this.repo.save(client);
+  } catch (error: any) {
+    if (error.code === '23505') {
+      throw new ConflictException('Documento já cadastrado');
+    }
+    throw error;
   }
+}
 
   async remove(id: number) {
     const client = await this.repo.findOne({ where: { id } });
