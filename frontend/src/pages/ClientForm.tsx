@@ -2,15 +2,16 @@ import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Save } from 'lucide-react';
+import { Save, ArrowLeft, User, Building2, MapPin, Loader2, AlertCircle, CheckCircle2, X } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
 
 const schema = z.object({
   id: z.number().optional(),
-  name: z.string().min(3, 'Nome obrigatório'),
+  name: z.string().min(3, 'Nome deve ter pelo menos 3 caracteres'),
   document: z.string().min(11, 'CPF/CNPJ obrigatório'),
-  email: z.string().email('Email inválido').optional(),
+  email: z.string().email('Email inválido').optional().or(z.literal('')),
   phone: z.string().optional(),
   type: z.enum(['FISICA', 'JURIDICA']),
   nomeFantasia: z.string().optional(),
@@ -24,9 +25,120 @@ const schema = z.object({
 
 type ClientFormData = z.infer<typeof schema>;
 
+// Componente Input personalizado
+const FormInput = ({ 
+  label, 
+  error, 
+  icon: Icon, 
+  className = '', 
+  ...props 
+}: any) => (
+  <div className={`space-y-2 ${className}`}>
+    <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
+      {Icon && <Icon className="w-4 h-4 text-gray-500" />}
+      {label}
+    </label>
+    <div className="relative">
+      <input
+        {...props}
+        className={`w-full px-4 py-3 border rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+          error 
+            ? 'border-red-300 bg-red-50 focus:ring-red-500' 
+            : 'border-gray-300 hover:border-gray-400 focus:border-blue-500'
+        }`}
+      />
+      {error && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="absolute right-3 top-1/2 transform -translate-y-1/2"
+        >
+          <AlertCircle className="w-5 h-5 text-red-500" />
+        </motion.div>
+      )}
+    </div>
+    <AnimatePresence>
+      {error && (
+        <motion.p
+          initial={{ opacity: 0, height: 0 }}
+          animate={{ opacity: 1, height: 'auto' }}
+          exit={{ opacity: 0, height: 0 }}
+          className="text-sm text-red-600 flex items-center gap-1"
+        >
+          <AlertCircle className="w-4 h-4" />
+          {error}
+        </motion.p>
+      )}
+    </AnimatePresence>
+  </div>
+);
+
+// Componente Select personalizado
+const FormSelect = ({ 
+  label, 
+  error, 
+  icon: Icon, 
+  children, 
+  className = '', 
+  ...props 
+}: any) => (
+  <div className={`space-y-2 ${className}`}>
+    <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
+      {Icon && <Icon className="w-4 h-4 text-gray-500" />}
+      {label}
+    </label>
+    <select
+      {...props}
+      className={`w-full px-4 py-3 border rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white ${
+        error 
+          ? 'border-red-300 bg-red-50 focus:ring-red-500' 
+          : 'border-gray-300 hover:border-gray-400 focus:border-blue-500'
+      }`}
+    >
+      {children}
+    </select>
+    <AnimatePresence>
+      {error && (
+        <motion.p
+          initial={{ opacity: 0, height: 0 }}
+          animate={{ opacity: 1, height: 'auto' }}
+          exit={{ opacity: 0, height: 0 }}
+          className="text-sm text-red-600 flex items-center gap-1"
+        >
+          <AlertCircle className="w-4 h-4" />
+          {error}
+        </motion.p>
+      )}
+    </AnimatePresence>
+  </div>
+);
+
+// Componente Seção
+const FormSection = ({ title, icon: Icon, children, className = '' }: any) => (
+  <motion.div
+    initial={{ opacity: 0, y: 20 }}
+    animate={{ opacity: 1, y: 0 }}
+    transition={{ duration: 0.3 }}
+    className={`bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden ${className}`}
+  >
+    <div className="bg-gradient-to-r from-blue-50 to-indigo-50 px-6 py-4 border-b border-gray-100">
+      <h3 className="text-lg font-semibold text-gray-800 flex items-center gap-3">
+        {Icon && <Icon className="w-5 h-5 text-blue-600" />}
+        {title}
+      </h3>
+    </div>
+    <div className="p-6">
+      {children}
+    </div>
+  </motion.div>
+);
+
 export default function ClientForm() {
   const [clients, setClients] = useState<ClientFormData[]>([]);
   const [editId, setEditId] = useState<number | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isCepLoading, setIsCepLoading] = useState(false);
+  const [tipoPessoa, setTipoPessoa] = useState<'FISICA' | 'JURIDICA'>('FISICA');
   const navigate = useNavigate();
 
   const {
@@ -35,16 +147,27 @@ export default function ClientForm() {
     reset,
     setValue,
     watch,
-    formState: { errors }
+    formState: { errors, isSubmitting }
   } = useForm<ClientFormData>({
-    resolver: zodResolver(schema)
+    resolver: zodResolver(schema),
+    defaultValues: {
+      type: 'FISICA'
+    }
   });
 
-  const tipoSelecionado = watch('type');
+  // Usar watch para detectar mudanças no tipo
+  const tipoWatch = watch('type');
+  
+  // Sincronizar o estado local com o watch
+  useEffect(() => {
+    if (tipoWatch) {
+      setTipoPessoa(tipoWatch);
+    }
+  }, [tipoWatch]);
 
   const formatarDocumento = (valor: string): string => {
     const num = valor.replace(/\D/g, '');
-    if (tipoSelecionado === 'JURIDICA') {
+    if (tipoPessoa === 'JURIDICA') {
       return num.replace(/(\d{2})(\d)/, '$1.$2')
         .replace(/(\d{3})(\d)/, '$1.$2')
         .replace(/(\d{3})(\d)/, '$1/$2')
@@ -71,23 +194,38 @@ export default function ClientForm() {
   const handleCepBlur = async (e: React.FocusEvent<HTMLInputElement>) => {
     const cep = e.target.value.replace(/\D/g, '');
     if (cep.length === 8) {
-      const res = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
-      const data = await res.json();
-      if (!data.erro) {
-        setValue('street', data.logradouro);
-        setValue('neighborhood', data.bairro);
-        setValue('city', data.localidade);
-        setValue('state', data.uf);
-      } else {
-        toast.error('CEP não encontrado');
+      setIsCepLoading(true);
+      try {
+        const res = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
+        const data = await res.json();
+        if (!data.erro) {
+          setValue('street', data.logradouro);
+          setValue('neighborhood', data.bairro);
+          setValue('city', data.localidade);
+          setValue('state', data.uf);
+          toast.success('Endereço preenchido automaticamente!');
+        } else {
+          toast.error('CEP não encontrado');
+        }
+      } catch (error) {
+        toast.error('Erro ao buscar CEP');
+      } finally {
+        setIsCepLoading(false);
       }
     }
   };
 
   const fetchClients = async () => {
-    const res = await fetch('http://localhost:3000/clients');
-    const data = await res.json();
-    setClients(data.sort((a, b) => a.name.localeCompare(b.name)));
+    setIsLoading(true);
+    try {
+      const res = await fetch('http://localhost:3000/clients');
+      const data = await res.json();
+      setClients(data.sort((a, b) => a.name.localeCompare(b.name)));
+    } catch (error) {
+      toast.error('Erro ao carregar clientes');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -103,12 +241,14 @@ export default function ClientForm() {
       ? `http://localhost:3000/clients/${editId}`
       : 'http://localhost:3000/clients';
     const method = editId ? 'PUT' : 'POST';
+    
     try {
       const res = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
+      
       if (!res.ok) {
         if (res.status === 409) {
           toast.error('Documento já cadastrado!');
@@ -116,9 +256,10 @@ export default function ClientForm() {
           throw new Error();
         }
       } else {
-        toast.success(editId ? 'Cliente atualizado!' : 'Cliente cadastrado!');
+        toast.success(editId ? 'Cliente atualizado com sucesso!' : 'Cliente cadastrado com sucesso!');
         reset();
         setEditId(null);
+        setTipoPessoa('FISICA');
         fetchClients();
       }
     } catch {
@@ -126,66 +267,215 @@ export default function ClientForm() {
     }
   };
 
+  const handleCancel = () => {
+    reset();
+    setEditId(null);
+    setTipoPessoa('FISICA');
+  };
+
   return (
-    <div className="p-6 max-w-4xl mx-auto space-y-6">
-      <form onSubmit={handleSubmit(onSubmit)} className="bg-white shadow-md rounded p-6 space-y-4 border border-gray-100">
-        <div className="flex justify-between items-center">
-          <h2 className="text-xl font-bold text-blue-700">{editId ? 'Editar Cliente' : 'Novo Cliente'}</h2>
-          <button type="button" onClick={() => navigate('/clientes')} className="text-sm text-blue-600 hover:underline">
-            Voltar para listagem
-          </button>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <select {...register('type')} className="input input-bordered w-full">
-            <option value="FISICA">Pessoa Física</option>
-            <option value="JURIDICA">Pessoa Jurídica</option>
-          </select>
-
-          <input
-            {...register('name')}
-            placeholder={tipoSelecionado === 'JURIDICA' ? 'Razão Social' : 'Nome'}
-            className="input input-bordered w-full"
-          />
-          {tipoSelecionado === 'JURIDICA' && (
-            <input
-              {...register('nomeFantasia')}
-              placeholder="Nome Fantasia"
-              className="input input-bordered w-full md:col-span-2"
-            />
-          )}
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <input {...register('document')} onChange={handleDocumentChange} placeholder="CPF ou CNPJ" className="input input-bordered w-full" />
-          <input {...register('email')} placeholder="Email" className="input input-bordered w-full" />
-          <input {...register('phone')} onChange={handlePhoneChange} placeholder="Telefone" className="input input-bordered w-full" />
-        </div>
-
-        <div className="pt-4 border-t border-gray-200">
-          <h3 className="text-md font-semibold text-gray-700 mb-2">Endereço</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <input {...register('cep')} onBlur={handleCepBlur} placeholder="CEP" className="input input-bordered w-full" />
-            <input {...register('street')} placeholder="Rua" className="input input-bordered w-full" />
-            <input {...register('number')} placeholder="Número" className="input input-bordered w-full" />
-            <input {...register('neighborhood')} placeholder="Bairro" className="input input-bordered w-full" />
-            <input {...register('city')} placeholder="Cidade" className="input input-bordered w-full" />
-            <input {...register('state')} placeholder="Estado" className="input input-bordered w-full" />
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50 py-8">
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+        {/* Header */}
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-8"
+        >
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">
+                {editId ? 'Editar Cliente' : 'Novo Cliente'}
+              </h1>
+              <p className="text-gray-600 mt-1">
+                {editId ? 'Atualize as informações do cliente' : 'Cadastre um novo cliente no sistema'}
+              </p>
+            </div>
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              type="button"
+              onClick={() => navigate('/clientes')}
+              className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-blue-600 bg-white border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors duration-200"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              Voltar para listagem
+            </motion.button>
           </div>
-        </div>
+        </motion.div>
 
-        <div className="flex flex-wrap gap-3">
-          <button type="submit" className="bg-blue-600 text-white px-6 py-2 rounded-md shadow hover:bg-blue-700 transition flex items-center gap-2">
-            <Save className="w-5 h-5" /> {editId ? 'Atualizar' : 'Salvar'}
-          </button>
-          <button type="button" onClick={() => { reset(); setEditId(null); }} className="bg-gray-300 text-gray-800 px-6 py-2 rounded-md shadow hover:bg-gray-400 transition">
-            Novo Cliente
-          </button>
-          <button type="button" onClick={() => { reset(); setEditId(null); }} className="bg-red-500 text-white px-6 py-2 rounded-md shadow hover:bg-red-600 transition">
-            Cancelar Edição
-          </button>
-        </div>
-      </form>
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-8">
+          {/* Informações Básicas */}
+          <FormSection
+            title="Informações Básicas"
+            icon={tipoPessoa === 'JURIDICA' ? Building2 : User}
+          >
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <FormSelect
+                label="Tipo de Pessoa"
+                error={errors.type?.message}
+                icon={tipoPessoa === 'JURIDICA' ? Building2 : User}
+                {...register('type')}
+              >
+                <option value="FISICA">Pessoa Física</option>
+                <option value="JURIDICA">Pessoa Jurídica</option>
+              </FormSelect>
+
+              <FormInput
+                label={tipoPessoa === 'JURIDICA' ? 'Razão Social' : 'Nome Completo'}
+                placeholder={tipoPessoa === 'JURIDICA' ? 'Digite a razão social' : 'Digite o nome completo'}
+                error={errors.name?.message}
+                icon={tipoPessoa === 'JURIDICA' ? Building2 : User}
+                {...register('name')}
+              />
+
+              {/* Campo Nome Fantasia - Versão Corrigida */}
+              {tipoPessoa === 'JURIDICA' && (
+                <motion.div
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.3 }}
+                  className="lg:col-span-2"
+                >
+                  <FormInput
+                    label="Nome Fantasia"
+                    placeholder="Digite o nome fantasia"
+                    error={errors.nomeFantasia?.message}
+                    icon={Building2}
+                    {...register('nomeFantasia')}
+                  />
+                </motion.div>
+              )}
+
+              <FormInput
+                label={tipoPessoa === 'JURIDICA' ? 'CNPJ' : 'CPF'}
+                placeholder={tipoPessoa === 'JURIDICA' ? '00.000.000/0000-00' : '000.000.000-00'}
+                error={errors.document?.message}
+                {...register('document')}
+                onChange={handleDocumentChange}
+                maxLength={tipoPessoa === 'JURIDICA' ? 18 : 14}
+              />
+
+              <FormInput
+                label="Email"
+                type="email"
+                placeholder="email@exemplo.com"
+                error={errors.email?.message}
+                {...register('email')}
+              />
+
+              <FormInput
+                label="Telefone"
+                placeholder="(00) 00000-0000"
+                error={errors.phone?.message}
+                {...register('phone')}
+                onChange={handlePhoneChange}
+                maxLength={15}
+              />
+            </div>
+          </FormSection>
+
+          {/* Endereço */}
+          <FormSection title="Endereço" icon={MapPin}>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              <div className="relative">
+                <FormInput
+                  label="CEP"
+                  placeholder="00000-000"
+                  error={errors.cep?.message}
+                  {...register('cep')}
+                  onBlur={handleCepBlur}
+                  maxLength={9}
+                />
+                {isCepLoading && (
+                  <div className="absolute right-3 top-9">
+                    <Loader2 className="w-5 h-5 text-blue-500 animate-spin" />
+                  </div>
+                )}
+              </div>
+
+              <div className="sm:col-span-2">
+                <FormInput
+                  label="Logradouro"
+                  placeholder="Rua, Avenida, etc."
+                  error={errors.street?.message}
+                  {...register('street')}
+                />
+              </div>
+
+              <FormInput
+                label="Número"
+                placeholder="123"
+                error={errors.number?.message}
+                {...register('number')}
+              />
+
+              <FormInput
+                label="Bairro"
+                placeholder="Nome do bairro"
+                error={errors.neighborhood?.message}
+                {...register('neighborhood')}
+              />
+
+              <FormInput
+                label="Cidade"
+                placeholder="Nome da cidade"
+                error={errors.city?.message}
+                {...register('city')}
+              />
+
+              <FormInput
+                label="Estado"
+                placeholder="UF"
+                error={errors.state?.message}
+                {...register('state')}
+                maxLength={2}
+              />
+            </div>
+          </FormSection>
+
+          {/* Botões de Ação */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-white rounded-xl shadow-sm border border-gray-100 p-6"
+          >
+            <div className="flex flex-col sm:flex-row gap-4 justify-end">
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                type="button"
+                onClick={handleCancel}
+                className="inline-flex items-center justify-center gap-2 px-6 py-3 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors duration-200"
+              >
+                <X className="w-4 h-4" />
+                Cancelar
+              </motion.button>
+
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                type="submit"
+                disabled={isSubmitting}
+                className="inline-flex items-center justify-center gap-2 px-6 py-3 text-sm font-medium text-white bg-gradient-to-r from-blue-600 to-blue-700 rounded-lg hover:from-blue-700 hover:to-blue-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-lg hover:shadow-xl"
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Salvando...
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-4 h-4" />
+                    {editId ? 'Atualizar Cliente' : 'Salvar Cliente'}
+                  </>
+                )}
+              </motion.button>
+            </div>
+          </motion.div>
+        </form>
+      </div>
     </div>
   );
 }
+
