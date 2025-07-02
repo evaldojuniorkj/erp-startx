@@ -13,7 +13,7 @@ import { Client } from './clients/client.entity';
       password: 'postgres',
       database: 'erpstartx',
       entities: [Client],
-      synchronize: true
+      synchronize: true // ⚠️ Use apenas em DEV!
     }),
     ClientsModule,
   ],

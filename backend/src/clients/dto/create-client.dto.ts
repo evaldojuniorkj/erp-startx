@@ -6,6 +6,9 @@ export enum ClientType {
 }
 
 export class CreateClientDto {
+  @IsEnum(ClientType)
+  type!: ClientType;
+
   @IsString()
   name!: string;
 
@@ -13,9 +16,9 @@ export class CreateClientDto {
   @IsString()
   nomeFantasia?: string;
 
+  @IsOptional()
   @IsString()
-  @Length(11, 18)
-  document!: string;
+  document?: string;
 
   @IsOptional()
   @IsEmail()
@@ -25,8 +28,18 @@ export class CreateClientDto {
   @IsString()
   phone?: string;
 
-  @IsEnum(ClientType)
-  type!: ClientType;
+  // NOVOS CAMPOS
+  @IsOptional()
+  @IsString()
+  inscricaoEstadual?: string;
+
+  @IsOptional()
+  @IsString()
+  suframa?: string;
+
+  @IsOptional()
+  @IsString()
+  rg?: string;
 
   @IsOptional()
   @IsString()

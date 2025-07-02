@@ -6,13 +6,16 @@ export class Client {
   id!: number;
 
   @Column()
+  type!: 'FISICA' | 'JURIDICA';
+
+  @Column()
   name!: string;
 
   @Column({ nullable: true })
   nomeFantasia?: string;
 
-  @Column({ unique: true })
-  document!: string;
+  @Column({ nullable: true, unique: true })
+  document?: string;
 
   @Column({ nullable: true })
   email?: string;
@@ -20,8 +23,15 @@ export class Client {
   @Column({ nullable: true })
   phone?: string;
 
-  @Column()
-  type!: 'FISICA' | 'JURIDICA';
+  // NOVOS CAMPOS
+  @Column({ nullable: true })
+  inscricaoEstadual?: string;
+
+  @Column({ nullable: true })
+  suframa?: string;
+
+  @Column({ nullable: true })
+  rg?: string;
 
   @Column({ nullable: true })
   cep?: string;

@@ -31,6 +31,11 @@ export class ClientsService {
     return this.repo.find();
   }
 
+  // NOVO: buscar cliente por ID
+  async findById(id: number) {
+    return this.repo.findOne({ where: { id } });
+  }
+
  async update(id: number, dto: CreateClientDto) {
   const client = await this.repo.findOne({ where: { id } });
   if (!client) throw new NotFoundException('Cliente não encontrado');

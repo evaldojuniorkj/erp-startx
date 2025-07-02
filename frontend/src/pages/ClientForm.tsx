@@ -7,6 +7,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { Toaster, toast } from 'react-hot-toast';
 import { validarCPF, validarCNPJ } from '../utils/validations';
+import { useParams } from 'react-router-dom';
+
 
 // SCHEMA com validação condicional
 const schema = z.object({
@@ -16,6 +18,10 @@ const schema = z.object({
   document: z.string().optional(),
   email: z.string().email('Email inválido').optional().or(z.literal('')),
   phone: z.string().optional(),
+  // Novos campos:
+  inscricaoEstadual: z.string().optional(),
+  suframa: z.string().optional(),
+  rg: z.string().optional(),
   cep: z.string().optional(),
   street: z.string().optional(),
   number: z.string().optional(),
@@ -175,6 +181,7 @@ export default function ClientForm() {
   const [isCepLoading, setIsCepLoading] = useState(false);
   const [tipoPessoa, setTipoPessoa] = useState<'FISICA' | 'JURIDICA'>('FISICA');
   const navigate = useNavigate();
+  const { id } = useParams<{ id?: string }>();
 
   const {
     register,
@@ -189,6 +196,26 @@ export default function ClientForm() {
     mode: 'onBlur',
     defaultValues: { type: 'FISICA' }
   });
+
+  // Buscar cliente para edição
+  useEffect(() => {
+    if (id) {
+      fetch(`http://localhost:3000/clients/${id}`)
+        .then(res => res.json())
+        .then(cliente => {
+          Object.entries(cliente).forEach(([key, value]) => {
+            setValue(key as any, value ?? '');
+          });
+          setTipoPessoa(cliente.type || 'FISICA');
+        })
+        .catch(() => {
+          toast.error('Erro ao carregar cliente');
+        });
+    } else {
+      reset({ type: 'FISICA' });
+      setTipoPessoa('FISICA');
+    }
+  }, [id, reset, setValue]);
 
   const watchedType = watch('type');
   useEffect(() => { setTipoPessoa(watchedType || 'FISICA'); }, [watchedType]);
@@ -236,23 +263,22 @@ export default function ClientForm() {
           setValue('state', data.uf);
         }
       } catch (error) {
-        console.error('Erro ao buscar CEP:', error);
+        toast.error('Erro ao buscar CEP');
       } finally {
         setIsCepLoading(false);
       }
     }
   };
 
-  // --- O BLOCO CORRIGIDO DO onSubmit ---
   const onSubmit = async (data: ClientFormData) => {
     try {
       const payload = {
         ...data,
         document: data.document ? data.document.replace(/\D/g, '') : ''
       };
-      const isEdicao = 'id' in data && !!data.id;
+      const isEdicao = !!id;
       const url = isEdicao
-        ? `http://localhost:3000/clients/${data.id}`
+        ? `http://localhost:3000/clients/${id}`
         : 'http://localhost:3000/clients';
       const method = isEdicao ? 'PUT' : 'POST';
 
@@ -265,22 +291,19 @@ export default function ClientForm() {
       if (!response.ok) {
         let msg = 'Erro ao salvar cliente. Tente novamente.';
         try {
-          // Tenta ler o JSON do erro
           const errData = await response.clone().json();
           if (errData && errData.message) {
             msg = Array.isArray(errData.message)
               ? errData.message.join('; ')
               : errData.message;
           }
-        } catch (e) {
-          // fallback se não conseguir ler o json
-        }
+        } catch (e) { }
         toast.error(msg);
         return;
       }
 
       toast.success(isEdicao ? 'Cliente atualizado com sucesso!' : 'Cliente cadastrado com sucesso!');
-      reset();
+      reset({ type: 'FISICA' });
       navigate('/clientes');
     } catch (error) {
       toast.error('Erro ao salvar cliente. Tente novamente.');
@@ -365,6 +388,44 @@ export default function ClientForm() {
                 onChange={handleDocumentChange}
                 maxLength={tipoPessoa === 'JURIDICA' ? 18 : 14}
               />
+
+              {/* Campos para Pessoa Física */}
+              {tipoPessoa === 'FISICA' && (
+                <>
+                  <FormInput
+                    label="RG"
+                    placeholder="RG"
+                    error={errors.rg?.message}
+                    {...register('rg')}
+                  />
+                  <FormInput
+                    label="Inscrição Estadual"
+                    placeholder="Inscrição Estadual"
+                    error={errors.inscricaoEstadual?.message}
+                    {...register('inscricaoEstadual')}
+                  />
+                </>
+              )}
+
+              {/* Campos para Pessoa Jurídica */}
+              {tipoPessoa === 'JURIDICA' && (
+                <>
+                  <FormInput
+                    label="Inscrição Estadual"
+                    placeholder="Inscrição Estadual"
+                    error={errors.inscricaoEstadual?.message}
+                    {...register('inscricaoEstadual')}
+                  />
+                  <FormInput
+                    label="Suframa"
+                    placeholder="Suframa"
+                    error={errors.suframa?.message}
+                    {...register('suframa')}
+                  />
+                </>
+              )}
+
+
 
               <FormInput
                 label="Email"
