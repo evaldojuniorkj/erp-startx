@@ -155,15 +155,12 @@ export default function ClientForm() {
     }
   });
 
-  // Usar watch para detectar mudanças no tipo
-  const tipoWatch = watch('type');
-  
-  // Sincronizar o estado local com o watch
-  useEffect(() => {
-    if (tipoWatch) {
-      setTipoPessoa(tipoWatch);
-    }
-  }, [tipoWatch]);
+  // Handler para mudança de tipo de pessoa
+  const handleTipoChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const novoTipo = e.target.value as 'FISICA' | 'JURIDICA';
+    setTipoPessoa(novoTipo);
+    setValue('type', novoTipo);
+  };
 
   const formatarDocumento = (valor: string): string => {
     const num = valor.replace(/\D/g, '');
@@ -315,7 +312,8 @@ export default function ClientForm() {
                 label="Tipo de Pessoa"
                 error={errors.type?.message}
                 icon={tipoPessoa === 'JURIDICA' ? Building2 : User}
-                {...register('type')}
+                value={tipoPessoa}
+                onChange={handleTipoChange}
               >
                 <option value="FISICA">Pessoa Física</option>
                 <option value="JURIDICA">Pessoa Jurídica</option>
@@ -329,7 +327,7 @@ export default function ClientForm() {
                 {...register('name')}
               />
 
-              {/* Campo Nome Fantasia - Versão Corrigida */}
+              {/* Campo Nome Fantasia - Funcional */}
               {tipoPessoa === 'JURIDICA' && (
                 <motion.div
                   initial={{ opacity: 0, y: -10 }}
