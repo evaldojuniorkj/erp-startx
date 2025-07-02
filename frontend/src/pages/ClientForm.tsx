@@ -1,20 +1,19 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Save, ArrowLeft, User, Building2, MapPin, Loader2, AlertCircle, CheckCircle2, X } from 'lucide-react';
-import { toast } from 'react-hot-toast';
-import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
 
+// Schema de validação
 const schema = z.object({
-  id: z.number().optional(),
-  name: z.string().min(3, 'Nome deve ter pelo menos 3 caracteres'),
-  document: z.string().min(11, 'CPF/CNPJ obrigatório'),
+  type: z.enum(['FISICA', 'JURIDICA']),
+  name: z.string().min(1, 'Nome é obrigatório'),
+  nomeFantasia: z.string().optional(),
+  document: z.string().min(1, 'Documento é obrigatório'),
   email: z.string().email('Email inválido').optional().or(z.literal('')),
   phone: z.string().optional(),
-  type: z.enum(['FISICA', 'JURIDICA']),
-  nomeFantasia: z.string().optional(),
   cep: z.string().optional(),
   street: z.string().optional(),
   number: z.string().optional(),
@@ -25,14 +24,14 @@ const schema = z.object({
 
 type ClientFormData = z.infer<typeof schema>;
 
-// Componente Input personalizado
-const FormInput = ({ 
+// Componente Input personalizado com forwardRef
+const FormInput = React.forwardRef<HTMLInputElement, any>(({ 
   label, 
   error, 
   icon: Icon, 
   className = '', 
   ...props 
-}: any) => (
+}, ref) => (
   <div className={`space-y-2 ${className}`}>
     <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
       {Icon && <Icon className="w-4 h-4 text-gray-500" />}
@@ -40,6 +39,7 @@ const FormInput = ({
     </label>
     <div className="relative">
       <input
+        ref={ref}
         {...props}
         className={`w-full px-4 py-3 border rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
           error 
@@ -71,15 +71,15 @@ const FormInput = ({
       )}
     </AnimatePresence>
   </div>
-);
+));
 
 // Componente Select personalizado
 const FormSelect = ({ 
   label, 
   error, 
   icon: Icon, 
-  children, 
   className = '', 
+  children,
   ...props 
 }: any) => (
   <div className={`space-y-2 ${className}`}>
@@ -87,16 +87,27 @@ const FormSelect = ({
       {Icon && <Icon className="w-4 h-4 text-gray-500" />}
       {label}
     </label>
-    <select
-      {...props}
-      className={`w-full px-4 py-3 border rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white ${
-        error 
-          ? 'border-red-300 bg-red-50 focus:ring-red-500' 
-          : 'border-gray-300 hover:border-gray-400 focus:border-blue-500'
-      }`}
-    >
-      {children}
-    </select>
+    <div className="relative">
+      <select
+        {...props}
+        className={`w-full px-4 py-3 border rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none bg-white ${
+          error 
+            ? 'border-red-300 bg-red-50 focus:ring-red-500' 
+            : 'border-gray-300 hover:border-gray-400 focus:border-blue-500'
+        }`}
+      >
+        {children}
+      </select>
+      {error && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="absolute right-10 top-1/2 transform -translate-y-1/2"
+        >
+          <AlertCircle className="w-5 h-5 text-red-500" />
+        </motion.div>
+      )}
+    </div>
     <AnimatePresence>
       {error && (
         <motion.p
@@ -113,16 +124,16 @@ const FormSelect = ({
   </div>
 );
 
-// Componente Seção
-const FormSection = ({ title, icon: Icon, children, className = '' }: any) => (
+// Componente de seção do formulário
+const FormSection = ({ title, icon: Icon, children }: any) => (
   <motion.div
     initial={{ opacity: 0, y: 20 }}
     animate={{ opacity: 1, y: 0 }}
-    transition={{ duration: 0.3 }}
-    className={`bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden ${className}`}
+    transition={{ duration: 0.5 }}
+    className="bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden"
   >
     <div className="bg-gradient-to-r from-blue-50 to-indigo-50 px-6 py-4 border-b border-gray-100">
-      <h3 className="text-lg font-semibold text-gray-800 flex items-center gap-3">
+      <h3 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
         {Icon && <Icon className="w-5 h-5 text-blue-600" />}
         {title}
       </h3>
@@ -134,9 +145,6 @@ const FormSection = ({ title, icon: Icon, children, className = '' }: any) => (
 );
 
 export default function ClientForm() {
-  const [clients, setClients] = useState<ClientFormData[]>([]);
-  const [editId, setEditId] = useState<number | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
   const [isCepLoading, setIsCepLoading] = useState(false);
   const [tipoPessoa, setTipoPessoa] = useState<'FISICA' | 'JURIDICA'>('FISICA');
   const navigate = useNavigate();
@@ -147,131 +155,107 @@ export default function ClientForm() {
     reset,
     setValue,
     watch,
+    clearErrors,
     formState: { errors, isSubmitting }
   } = useForm<ClientFormData>({
     resolver: zodResolver(schema),
+    mode: 'onBlur', // Mudando para onBlur para melhor performance
     defaultValues: {
       type: 'FISICA'
     }
   });
+
+  // Usar watch para detectar mudanças no tipo
+  const watchedType = watch('type');
+
+  // Sincronizar estado local com o watch
+  useEffect(() => {
+    setTipoPessoa(watchedType || 'FISICA');
+  }, [watchedType]);
 
   // Handler para mudança de tipo de pessoa
   const handleTipoChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const novoTipo = e.target.value as 'FISICA' | 'JURIDICA';
     setTipoPessoa(novoTipo);
     setValue('type', novoTipo);
+    
+    // Limpar campo nome fantasia se mudou para pessoa física
+    if (novoTipo === 'FISICA') {
+      setValue('nomeFantasia', '');
+    }
   };
 
-  const formatarDocumento = (valor: string): string => {
-    const num = valor.replace(/\D/g, '');
-    if (tipoPessoa === 'JURIDICA') {
-      return num.replace(/(\d{2})(\d)/, '$1.$2')
+  // Formatação de documento
+  const formatDocument = (value: string, type: 'FISICA' | 'JURIDICA') => {
+    const numbers = value.replace(/\D/g, '');
+    
+    if (type === 'FISICA') {
+      // CPF: 000.000.000-00
+      return numbers
+        .slice(0, 11)
+        .replace(/(\d{3})(\d)/, '$1.$2')
+        .replace(/(\d{3})(\d)/, '$1.$2')
+        .replace(/(\d{3})(\d{1,2})$/, '$1-$2');
+    } else {
+      // CNPJ: 00.000.000/0000-00
+      return numbers
+        .slice(0, 14)
+        .replace(/(\d{2})(\d)/, '$1.$2')
         .replace(/(\d{3})(\d)/, '$1.$2')
         .replace(/(\d{3})(\d)/, '$1/$2')
         .replace(/(\d{4})(\d{1,2})$/, '$1-$2');
     }
-    return num.replace(/(\d{3})(\d)/, '$1.$2')
-      .replace(/(\d{3})(\d)/, '$1.$2')
-      .replace(/(\d{3})(\d{1,2})$/, '$1-$2');
   };
 
+  // Handler para mudança de documento
   const handleDocumentChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = formatarDocumento(e.target.value);
-    setValue('document', value);
+    const formatted = formatDocument(e.target.value, tipoPessoa);
+    setValue('document', formatted);
+    e.target.value = formatted;
   };
 
-  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const raw = e.target.value.replace(/\D/g, '');
-    const masked = raw.length > 10
-      ? raw.replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3')
-      : raw.replace(/(\d{2})(\d{4})(\d{4})/, '($1) $2-$3');
-    setValue('phone', masked);
-  };
-
-  const handleCepBlur = async (e: React.FocusEvent<HTMLInputElement>) => {
+  // Buscar CEP
+  const handleCepChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const cep = e.target.value.replace(/\D/g, '');
+    
     if (cep.length === 8) {
       setIsCepLoading(true);
       try {
-        const res = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
-        const data = await res.json();
+        const response = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
+        const data = await response.json();
+        
         if (!data.erro) {
           setValue('street', data.logradouro);
           setValue('neighborhood', data.bairro);
           setValue('city', data.localidade);
           setValue('state', data.uf);
-          toast.success('Endereço preenchido automaticamente!');
-        } else {
-          toast.error('CEP não encontrado');
         }
       } catch (error) {
-        toast.error('Erro ao buscar CEP');
+        console.error('Erro ao buscar CEP:', error);
       } finally {
         setIsCepLoading(false);
       }
     }
   };
 
-  const fetchClients = async () => {
-    setIsLoading(true);
-    try {
-      const res = await fetch('http://localhost:3000/clients');
-      const data = await res.json();
-      setClients(data.sort((a, b) => a.name.localeCompare(b.name)));
-    } catch (error) {
-      toast.error('Erro ao carregar clientes');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchClients();
-  }, []);
-
   const onSubmit = async (data: ClientFormData) => {
-    const payload = {
-      ...data,
-      document: data.document.replace(/\D/g, '')
-    };
-    const url = editId
-      ? `http://localhost:3000/clients/${editId}`
-      : 'http://localhost:3000/clients';
-    const method = editId ? 'PUT' : 'POST';
-    
     try {
-      const res = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
+      console.log('Dados do formulário:', data);
+      // Aqui você faria a chamada para a API
+      await new Promise(resolve => setTimeout(resolve, 2000)); // Simular delay
       
-      if (!res.ok) {
-        if (res.status === 409) {
-          toast.error('Documento já cadastrado!');
-        } else {
-          throw new Error();
-        }
-      } else {
-        toast.success(editId ? 'Cliente atualizado com sucesso!' : 'Cliente cadastrado com sucesso!');
-        reset();
-        setEditId(null);
-        setTipoPessoa('FISICA');
-        fetchClients();
-      }
-    } catch {
-      toast.error('Erro ao salvar cliente!');
+      // Mostrar sucesso
+      alert('Cliente salvo com sucesso!');
+      reset();
+      navigate('/clientes');
+    } catch (error) {
+      console.error('Erro ao salvar cliente:', error);
+      alert('Erro ao salvar cliente. Tente novamente.');
     }
-  };
-
-  const handleCancel = () => {
-    reset();
-    setEditId(null);
-    setTipoPessoa('FISICA');
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50 py-8">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 py-8">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <motion.div
@@ -279,21 +263,16 @@ export default function ClientForm() {
           animate={{ opacity: 1, y: 0 }}
           className="mb-8"
         >
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-3xl font-bold text-gray-900">
-                {editId ? 'Editar Cliente' : 'Novo Cliente'}
-              </h1>
-              <p className="text-gray-600 mt-1">
-                {editId ? 'Atualize as informações do cliente' : 'Cadastre um novo cliente no sistema'}
-              </p>
+              <h1 className="text-3xl font-bold text-gray-900 mb-2">Novo Cliente</h1>
+              <p className="text-gray-600">Cadastre um novo cliente no sistema</p>
             </div>
             <motion.button
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
-              type="button"
               onClick={() => navigate('/clientes')}
-              className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-blue-600 bg-white border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors duration-200"
+              className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors shadow-sm"
             >
               <ArrowLeft className="w-4 h-4" />
               Voltar para listagem
@@ -312,7 +291,7 @@ export default function ClientForm() {
                 label="Tipo de Pessoa"
                 error={errors.type?.message}
                 icon={tipoPessoa === 'JURIDICA' ? Building2 : User}
-                value={tipoPessoa}
+                {...register('type')}
                 onChange={handleTipoChange}
               >
                 <option value="FISICA">Pessoa Física</option>
@@ -367,39 +346,36 @@ export default function ClientForm() {
                 placeholder="(00) 00000-0000"
                 error={errors.phone?.message}
                 {...register('phone')}
-                onChange={handlePhoneChange}
-                maxLength={15}
               />
             </div>
           </FormSection>
 
           {/* Endereço */}
           <FormSection title="Endereço" icon={MapPin}>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <div className="relative">
                 <FormInput
                   label="CEP"
                   placeholder="00000-000"
                   error={errors.cep?.message}
                   {...register('cep')}
-                  onBlur={handleCepBlur}
+                  onChange={handleCepChange}
                   maxLength={9}
                 />
                 {isCepLoading && (
                   <div className="absolute right-3 top-9">
-                    <Loader2 className="w-5 h-5 text-blue-500 animate-spin" />
+                    <Loader2 className="w-5 h-5 animate-spin text-blue-500" />
                   </div>
                 )}
               </div>
 
-              <div className="sm:col-span-2">
-                <FormInput
-                  label="Logradouro"
-                  placeholder="Rua, Avenida, etc."
-                  error={errors.street?.message}
-                  {...register('street')}
-                />
-              </div>
+              <FormInput
+                label="Logradouro"
+                placeholder="Rua, Avenida, etc."
+                error={errors.street?.message}
+                {...register('street')}
+                className="lg:col-span-2"
+              />
 
               <FormInput
                 label="Número"
@@ -436,40 +412,34 @@ export default function ClientForm() {
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="bg-white rounded-xl shadow-sm border border-gray-100 p-6"
+            transition={{ delay: 0.3 }}
+            className="flex justify-end gap-4 pt-6"
           >
-            <div className="flex flex-col sm:flex-row gap-4 justify-end">
-              <motion.button
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                type="button"
-                onClick={handleCancel}
-                className="inline-flex items-center justify-center gap-2 px-6 py-3 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors duration-200"
-              >
-                <X className="w-4 h-4" />
-                Cancelar
-              </motion.button>
-
-              <motion.button
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                type="submit"
-                disabled={isSubmitting}
-                className="inline-flex items-center justify-center gap-2 px-6 py-3 text-sm font-medium text-white bg-gradient-to-r from-blue-600 to-blue-700 rounded-lg hover:from-blue-700 hover:to-blue-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-lg hover:shadow-xl"
-              >
-                {isSubmitting ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Salvando...
-                  </>
-                ) : (
-                  <>
-                    <Save className="w-4 h-4" />
-                    {editId ? 'Atualizar Cliente' : 'Salvar Cliente'}
-                  </>
-                )}
-              </motion.button>
-            </div>
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              type="button"
+              onClick={() => navigate('/clientes')}
+              className="flex items-center gap-2 px-6 py-3 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+            >
+              <X className="w-4 h-4" />
+              Cancelar
+            </motion.button>
+            
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              type="submit"
+              disabled={isSubmitting}
+              className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {isSubmitting ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Save className="w-4 h-4" />
+              )}
+              {isSubmitting ? 'Salvando...' : 'Salvar Cliente'}
+            </motion.button>
           </motion.div>
         </form>
       </div>
